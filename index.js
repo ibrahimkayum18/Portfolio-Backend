@@ -1,4 +1,3 @@
-
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -23,10 +22,15 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 // ================= EMAIL SETUP =================
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false, // true only for port 465
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
+  },
+  tls: {
+    rejectUnauthorized: false,
   },
 });
 
@@ -87,62 +91,9 @@ async function run() {
 
     const db = client.db("IbrahimKayum");
 
-    const blogCollection = db.collection("blogs");
-    const caseStudyCollection = db.collection("case-studies");
-    const workCollection = db.collection("works");
     const contactCollection = db.collection("contacts");
 
-    // ================= BLOG =================
-
-    app.post("/blogs", async (req, res) => {
-      try {
-        const result = await blogCollection.insertOne(req.body);
-        res.send(result);
-      } catch (err) {
-        res.status(500).send({ error: "Failed to create blog" });
-      }
-    });
-
-    app.get("/blogs", async (req, res) => {
-      const result = await blogCollection.find().toArray();
-      res.send(result);
-    });
-
-    app.get("/blogs/:id", async (req, res) => {
-      try {
-        if (!ObjectId.isValid(req.params.id)) {
-          return res.status(400).send({ error: "Invalid ID" });
-        }
-
-        const result = await blogCollection.findOne({
-          _id: new ObjectId(req.params.id),
-        });
-
-        res.send(result);
-      } catch {
-        res.status(500).send({ error: "Failed to fetch blog" });
-      }
-    });
-
-    app.patch("/blogs/:id", async (req, res) => {
-      try {
-        const result = await blogCollection.updateOne(
-          { _id: new ObjectId(req.params.id) },
-          { $set: req.body }
-        );
-        res.send(result);
-      } catch {
-        res.status(500).send({ error: "Update failed" });
-      }
-    });
-
-    app.delete("/blogs/:id", async (req, res) => {
-      const result = await blogCollection.deleteOne({
-        _id: new ObjectId(req.params.id),
-      });
-      res.send(result);
-    });
-
+   
     // ================= CONTACT =================
 
     app.post("/contact", async (req, res) => {
