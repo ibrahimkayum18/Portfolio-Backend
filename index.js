@@ -1,169 +1,124 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const app = express();
-const port = process.env.PORT || 5000;
 const nodemailer = require("nodemailer");
 
+const app = express();
+const port = process.env.PORT || 5000;
+
+// Middleware
 app.use(express.json());
 
-// ✅ FIXED CORS (only once)
 app.use(
   cors({
     origin: ["http://localhost:5173"],
-    methods: ["GET", "POST", "PATCH", "DELETE"],
+    methods: ["GET", "POST"],
   })
 );
-
-
-
-const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 // ================= EMAIL SETUP =================
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 587,
-  secure: false, // true only for port 465
+  secure: false,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  tls: {
-    rejectUnauthorized: false,
-  },
 });
 
-// verify email config
 transporter.verify((error) => {
   if (error) {
-    console.error("❌ Email config error:", error);
+    console.error("❌ Email configuration error:", error);
   } else {
-    console.log("✅ Email server ready");
+    console.log("✅ Email server is ready");
   }
 });
 
+// ================= SEND EMAIL TO VISITOR =================
 
-// send email to visitor
-const sendVisitorEmail = async (data) => {
+const sendVisitorEmail = async ({ name, email }) => {
   await transporter.sendMail({
-    from: process.env.EMAIL_USER,
-    to: data.email,
-    subject: "Message Received",
+    from: `"Ibrahim Kayum" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: "Thank you for contacting me!",
     html: `
-      <h3>Hi ${data.name},</h3>
-      <p>Thanks for contacting me. I have received your message and will reply soon.</p>
+      <h2>Hello ${name},</h2>
+
+      <p>Thank you for reaching out through my portfolio website.</p>
+
+      <p>I have successfully received your message and will get back to you as soon as possible.</p>
+
+      <p>Best Regards,<br><br>
+      <strong>S M Ibrahim Kayum</strong><br>
+      Shopify Developer & CRO Specialist<br>
+      WhatsApp: 01609640109</p>
     `,
   });
 };
 
-// send email to you (admin)
-const sendAdminEmail = async (data) => {
+// ================= SEND EMAIL TO ADMIN =================
+
+const sendAdminEmail = async ({ name, email, message }) => {
   await transporter.sendMail({
-    from: process.env.EMAIL_USER,
+    from: `"Portfolio Contact Form" <${process.env.EMAIL_USER}>`,
     to: process.env.ADMIN_EMAIL,
-    subject: "New Contact Message",
+    subject: "📩 New Contact Form Submission",
     html: `
-      <h3>New Message Received</h3>
-      <p><strong>Name:</strong> ${data.name}</p>
-      <p><strong>Email:</strong> ${data.email}</p>
-      <p><strong>Message:</strong> ${data.message}</p>
+      <h2>New Contact Form Message</h2>
+
+      <p><strong>Name:</strong> ${name}</p>
+
+      <p><strong>Email:</strong> ${email}</p>
+
+      <p><strong>Message:</strong></p>
+
+      <p>${message}</p>
     `,
   });
 };
 
-// ================= MONGODB =================
+// ================= CONTACT ROUTE =================
 
-const uri = process.env.MONGO_URI;
-console.log("Mongodb URL = ", uri)
-
-const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  },
-});
-
-async function run() {
+app.post("/contact", async (req, res) => {
   try {
-    await client.connect();
+    const { name, email, message } = req.body;
 
-    const db = client.db("IbrahimKayum");
-
-    const contactCollection = db.collection("contacts");
-
-   
-    // ================= CONTACT =================
-
-    app.post("/contact", async (req, res) => {
-      try {
-        const { name, email, message } = req.body;
-
-        if (!name || !email || !message) {
-          return res.status(400).send({
-            success: false,
-            message: "All fields are required",
-          });
-        }
-
-        const contactData = {
-          name,
-          email,
-          message,
-          createdAt: new Date(),
-          status: "Unread",
-        };
-
-        await contactCollection.insertOne(contactData);
-
-        // ✅ SEND EMAILS
-        await sendVisitorEmail(contactData);
-        await sendAdminEmail(contactData);
-
-        res.status(201).send({
-          success: true,
-          message: "Message sent successfully!",
-        });
-      } catch (error) {
-        console.error(error);
-        res.status(500).send({
-          success: false,
-          message: "Server error",
-        });
-      }
-    });
-
-    app.get("/contact", async (req, res) => {
-      const result = await contactCollection.find().toArray();
-      res.send(result);
-    });
-
-    app.delete("/contact/:id", async (req, res) => {
-      const result = await contactCollection.deleteOne({
-        _id: new ObjectId(req.params.id),
+    if (!name || !email || !message) {
+      return res.status(400).send({
+        success: false,
+        message: "All fields are required.",
       });
-      res.send(result);
+    }
+
+    // Send email to yourself
+    await sendAdminEmail({ name, email, message });
+
+    // Send confirmation email to visitor
+    await sendVisitorEmail({ name, email });
+
+    res.status(200).send({
+      success: true,
+      message: "Your message has been sent successfully.",
     });
+  } catch (error) {
+    console.error("Email Error:", error);
 
-    // ================= HEALTH CHECK =================
-
-    await client.db("admin").command({ ping: 1 });
-    console.log("✅ MongoDB Connected");
-  } finally {
-    // keep connection alive
+    res.status(500).send({
+      success: false,
+      message: "Failed to send message.",
+    });
   }
-}
-
-run().catch(console.dir);
+});
 
 // ================= ROOT =================
 
 app.get("/", (req, res) => {
-  res.send("Server is running");
+  res.send("Server is running.");
 });
 
-// ================= START =================
+// ================= START SERVER =================
 
 app.listen(port, () => {
   console.log(`🚀 Server running on port ${port}`);
