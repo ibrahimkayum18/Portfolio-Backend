@@ -1,16 +1,78 @@
+
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-require("dotenv").config();
 const app = express();
 const port = process.env.PORT || 5000;
+const nodemailer = require("nodemailer");
 
-app.use(cors());
 app.use(express.json());
 
-const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-const uri = process.env.MONGODB_URI;
+// ✅ FIXED CORS (only once)
+app.use(
+  cors({
+    origin: ["http://localhost:5173"],
+    methods: ["GET", "POST", "PATCH", "DELETE"],
+  })
+);
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
+
+
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+
+// ================= EMAIL SETUP =================
+
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+// verify email config
+transporter.verify((error) => {
+  if (error) {
+    console.error("❌ Email config error:", error);
+  } else {
+    console.log("✅ Email server ready");
+  }
+});
+
+
+// send email to visitor
+const sendVisitorEmail = async (data) => {
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to: data.email,
+    subject: "Message Received",
+    html: `
+      <h3>Hi ${data.name},</h3>
+      <p>Thanks for contacting me. I have received your message and will reply soon.</p>
+    `,
+  });
+};
+
+// send email to you (admin)
+const sendAdminEmail = async (data) => {
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to: process.env.ADMIN_EMAIL,
+    subject: "New Contact Message",
+    html: `
+      <h3>New Message Received</h3>
+      <p><strong>Name:</strong> ${data.name}</p>
+      <p><strong>Email:</strong> ${data.email}</p>
+      <p><strong>Message:</strong> ${data.message}</p>
+    `,
+  });
+};
+
+// ================= MONGODB =================
+
+const uri = process.env.MONGO_URI;
+console.log("Mongodb URL = ", uri)
+
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -21,21 +83,24 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
 
-    const blogCollection = client.db("IbrahimKayum").collection("blogs");
-    const caseStudyCollection = client.db("IbrahimKayum").collection("case-studies");
-    const workCollection = client.db("IbrahimKayum").collection("works");
-    const contactCollection = client.db("IbrahimKayum").collection("contacts");
+    const db = client.db("IbrahimKayum");
 
-    // =====================
-    // BLOG APIs (CRUD)
-    // =====================
+    const blogCollection = db.collection("blogs");
+    const caseStudyCollection = db.collection("case-studies");
+    const workCollection = db.collection("works");
+    const contactCollection = db.collection("contacts");
+
+    // ================= BLOG =================
 
     app.post("/blogs", async (req, res) => {
-      const result = await blogCollection.insertOne(req.body);
-      res.send(result);
+      try {
+        const result = await blogCollection.insertOne(req.body);
+        res.send(result);
+      } catch (err) {
+        res.status(500).send({ error: "Failed to create blog" });
+      }
     });
 
     app.get("/blogs", async (req, res) => {
@@ -44,18 +109,31 @@ async function run() {
     });
 
     app.get("/blogs/:id", async (req, res) => {
-      const result = await blogCollection.findOne({
-        _id: new ObjectId(req.params.id),
-      });
-      res.send(result);
+      try {
+        if (!ObjectId.isValid(req.params.id)) {
+          return res.status(400).send({ error: "Invalid ID" });
+        }
+
+        const result = await blogCollection.findOne({
+          _id: new ObjectId(req.params.id),
+        });
+
+        res.send(result);
+      } catch {
+        res.status(500).send({ error: "Failed to fetch blog" });
+      }
     });
 
     app.patch("/blogs/:id", async (req, res) => {
-      const result = await blogCollection.updateOne(
-        { _id: new ObjectId(req.params.id) },
-        { $set: req.body }
-      );
-      res.send(result);
+      try {
+        const result = await blogCollection.updateOne(
+          { _id: new ObjectId(req.params.id) },
+          { $set: req.body }
+        );
+        res.send(result);
+      } catch {
+        res.status(500).send({ error: "Update failed" });
+      }
     });
 
     app.delete("/blogs/:id", async (req, res) => {
@@ -65,81 +143,7 @@ async function run() {
       res.send(result);
     });
 
-    // =====================
-    // CASE STUDY APIs
-    // =====================
-
-    app.post("/case-studies", async (req, res) => {
-      const result = await caseStudyCollection.insertOne(req.body);
-      res.send(result);
-    });
-
-    app.get("/case-studies", async (req, res) => {
-      const result = await caseStudyCollection.find().toArray();
-      res.send(result);
-    });
-
-    app.get("/case-studies/:id", async (req, res) => {
-      const result = await caseStudyCollection.findOne({
-        _id: new ObjectId(req.params.id),
-      });
-      res.send(result);
-    });
-
-    app.patch("/case-studies/:id", async (req, res) => {
-      const result = await caseStudyCollection.updateOne(
-        { _id: new ObjectId(req.params.id) },
-        { $set: req.body }
-      );
-      res.send(result);
-    });
-
-    app.delete("/case-studies/:id", async (req, res) => {
-      const result = await caseStudyCollection.deleteOne({
-        _id: new ObjectId(req.params.id),
-      });
-      res.send(result);
-    });
-
-    // =====================
-    // WORK APIs
-    // =====================
-
-    app.post("/works", async (req, res) => {
-      const result = await workCollection.insertOne(req.body);
-      res.send(result);
-    });
-
-    app.get("/works", async (req, res) => {
-      const result = await workCollection.find().toArray();
-      res.send(result);
-    });
-
-    app.get("/works/:id", async (req, res) => {
-      const result = await workCollection.findOne({
-        _id: new ObjectId(req.params.id),
-      });
-      res.send(result);
-    });
-
-    app.patch("/works/:id", async (req, res) => {
-      const result = await workCollection.updateOne(
-        { _id: new ObjectId(req.params.id) },
-        { $set: req.body }
-      );
-      res.send(result);
-    });
-
-    app.delete("/works/:id", async (req, res) => {
-      const result = await workCollection.deleteOne({
-        _id: new ObjectId(req.params.id),
-      });
-      res.send(result);
-    });
-
-    // =====================
-    // CONTACT API
-    // =====================
+    // ================= CONTACT =================
 
     app.post("/contact", async (req, res) => {
       try {
@@ -148,7 +152,7 @@ async function run() {
         if (!name || !email || !message) {
           return res.status(400).send({
             success: false,
-            message: "All fields required",
+            message: "All fields are required",
           });
         }
 
@@ -162,13 +166,13 @@ async function run() {
 
         await contactCollection.insertOne(contactData);
 
-        // Send Emails
-        await sendAdminEmail(contactData);
+        // ✅ SEND EMAILS
         await sendVisitorEmail(contactData);
+        await sendAdminEmail(contactData);
 
         res.status(201).send({
           success: true,
-          message: "Message sent successfully",
+          message: "Message sent successfully!",
         });
       } catch (error) {
         console.error(error);
@@ -191,22 +195,25 @@ async function run() {
       res.send(result);
     });
 
-    // Send a ping to confirm a successful connection
+    // ================= HEALTH CHECK =================
+
     await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    console.log("✅ MongoDB Connected");
   } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
+    // keep connection alive
   }
 }
+
 run().catch(console.dir);
+
+// ================= ROOT =================
 
 app.get("/", (req, res) => {
   res.send("Server is running");
 });
 
+// ================= START =================
+
 app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
+  console.log(`🚀 Server running on port ${port}`);
 });
